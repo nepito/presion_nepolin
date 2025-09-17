@@ -1,61 +1,113 @@
-import altair as alt
-import pandas as pd
-import plotly.express as px
 import streamlit as st
-import streamlit_nies as sn
+import requests
+import datetime
 
+# Configuración de la PWA
+st.set_page_config(
+    page_title="Nombre de Tu App",
+    page_icon="🎯", # Puedes usar un emoji o la ruta a tu icono
+    layout="wide"
+)
 
-larga = pd.read_csv("static/larga_player.csv")
-data = pd.read_csv("static/played_minutes.csv")
-# ----------------- game start --------
-radar_player = "J. Musiala"
+# Inyecta el HTML para el manifiesto y el service worker
+def inject_meta():
+    with open('manifest.json', 'r') as f:
+        manifest_json = f.read()
 
-fig = sn.make_bar_plot_player(larga, radar_player)
+    js_code = f"""
+    <script>
+        // Registra el Service Worker
+        if ('serviceWorker' in navigator) {{
+            window.addEventListener('load', () => {{
+                navigator.serviceWorker.register('sw.js')
+                    .then((reg) => console.log('Service Worker registrado', reg))
+                    .catch((err) => console.log('Service Worker no registrado', err));
+            }});
+        }}
 
-league, team, player = st.tabs(["League", "Team", "Player"])
+        // Crea un link tag para el manifiesto
+        let link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = 'data:application/json;charset=utf-8,' + encodeURIComponent({manifest_json});
+        document.head.appendChild(link);
 
-with league:
-    st.subheader("Gráficas de desempeño")
+        // También crea meta tags para theme-color (opcional pero recomendado)
+        let metaTheme = document.createElement('meta');
+        metaTheme.name = 'theme-color';
+        metaTheme.content = '#000000';
+        document.head.appendChild(metaTheme);
+    </script>
     """
-    Estas gráficas tienen un conjunto de métricas seleccionadas a partir de técnicas de inteligencia artificial.
-    Cada barra representa la fuerza relativa del jugador en cada una de las métricas.
-    La distancia que existe de la barra al centro indica el percentil comparado con la base de datos completa.
+    st.components.v1.html(js_code, height=0)
 
-    La descripción completa la encontrarás en la entrada [Gráfica de desempeño de jugadores](https://www.nies.futbol/2023/07/grafica-de-desempeno-de-jugadores.html).
-    """
-    st.plotly_chart(fig)
+inject_meta()
 
-with team:
-    st.subheader("Gráficas de consistencia")
-    """
-    En la figura de abajo mostramos un mapa de calor.
-    En los renglones podemos ver a los jugadores del equipo (incluyendo a los sustitutos).
-    Las columnas corresponden a los partidos disputados.
-    Así, el color de cada cuadro representa los minutos disputados en un partido por cada jugador.
+# Título de la aplicación
+st.title('Registro de Presión Arterial 🩺')
 
-    La descripción completa la encontrarás en la entrada [Consistencia en las alineaciones](https://www.nies.futbol/2023/08/consistencia-en-las-alineaciones-la.html).
-    """
-    teams = ["Cimarrones", "Cancún", "Mineros de Zacatecas"]
-    colours = {"Cimarrones": "oranges", "Cancún": "blues", "Mineros de Zacatecas": "reds"}
-    team = st.selectbox("Selecciona un equipo:", teams)
-    color = colours[team]
-    played_minutes = data[data.team == team]
+# Subtítulo con una breve descripción
+st.write('Ingresa tus mediciones de presión arterial y pulso para registrarlas en la base de datos.')
 
-    # Crear el gráfico de Altair
-    hm_consistent = sn.make_heat_map_of_sonsistent(data, team, color)
-    st.altair_chart(hm_consistent)
+# Definir la URL de la API
+API_URL = "http://localhost:6969/presiones"
 
-with player:
-    st.subheader("Gráficas de desempeño")
-    """
-    Estas gráficas tienen un conjunto de métricas seleccionadas a partir de técnicas de inteligencia artificial.
-    Cada barra representa la fuerza relativa del jugador en cada una de las métricas.
-    La distancia que existe de la barra al centro indica el percentil comparado con la base de datos completa.
+# Obtener la fecha y hora actuales para sugerirlas en el formulario
+fecha_actual = datetime.date.today()
+hora_actual = datetime.datetime.now().time().strftime("%H:%M:%S")
 
-    La descripción completa la encontrarás en la entrada [Gráfica de desempeño de jugadores](https://www.nies.futbol/2023/07/grafica-de-desempeno-de-jugadores.html).
-    """
-    fig = sn.add_nies_logo(fig)
-    st.plotly_chart(fig)
+# --- Formulario de entrada de datos ---
+with st.form(key='presion_form'):
+    st.header('Datos de la Medición')
 
+    # Campo para la presión sistólica
+    sistolica = st.number_input('Presión Sistólica (mmHg)', min_value=0, value=120, help='Valor superior (presión máxima)')
 
-st.markdown("Made with 💖 by [nies.futbol](https://nies.futbol)")
+    # Campo para la presión diastólica
+    diastolica = st.number_input('Presión Diastólica (mmHg)', min_value=0, value=80, help='Valor inferior (presión mínima)')
+
+    # Campo para el pulso
+    pulso = st.number_input('Pulso (latidos/min)', min_value=0, value=75, help='Número de pulsaciones por minuto')
+
+    # Campo de notas
+    notas = st.text_area('Notas Adicionales', help='Detalles sobre la medición (ej. en ayunas, después de ejercicio, etc.)')
+
+    # Campo para las etiquetas
+    etiquetas_input = st.text_input('Etiquetas (separadas por comas)', help='Ej: mañana, reposo, estrés')
+    # Convertir el string de etiquetas a una lista
+    etiquetas = [tag.strip() for tag in etiquetas_input.split(',') if tag.strip()]
+
+    # Campos de fecha y hora, sugeridos automáticamente
+    fecha_medicion = st.date_input('Fecha de la Medición', value=fecha_actual)
+    hora_medicion = st.time_input('Hora de la Medición', value=datetime.datetime.now().time())
+
+    # Botón para enviar el formulario
+    submit_button = st.form_submit_button(label='Registrar Medición')
+
+# --- Lógica para enviar los datos a la API ---
+if submit_button:
+    # Preparar los datos en el formato JSON que la API espera
+    data = {
+        "diastolica": int(diastolica),
+        "etiquetas": etiquetas,
+        "fecha_medicion": str(fecha_medicion),
+        "hora_medicion": hora_medicion.strftime("%H:%M:%S"),
+        "notas": notas,
+        "pulso": int(pulso),
+        "sistolica": int(sistolica)
+    }
+
+    try:
+        # Enviar la petición POST a la API
+        response = requests.post(API_URL, json=data)
+
+        # Verificar el estado de la respuesta
+        if response.status_code == 200:
+            st.success('✅ ¡Medición registrada exitosamente!')
+            st.json(response.json())  # Mostrar la respuesta de la API
+        else:
+            st.error(f'❌ Ocurrió un error al registrar la medición. Código de estado: {response.status_code}')
+            st.json(response.json()) # Mostrar el error detallado de la API
+
+    except requests.exceptions.RequestException as e:
+        st.error(f"❌ No se pudo conectar a la API. Asegúrate de que está funcionando en {API_URL}")
+        st.write(f"Error detallado: {e}")
