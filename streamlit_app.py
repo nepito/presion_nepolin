@@ -9,39 +9,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Inyecta el HTML para el manifiesto y el service worker
-def inject_meta():
-    with open('manifest.json', 'r') as f:
-        manifest_json = f.read()
-
-    js_code = f"""
-    <script>
-        // Registra el Service Worker
-        if ('serviceWorker' in navigator) {{
-            window.addEventListener('load', () => {{
-                navigator.serviceWorker.register('sw.js')
-                    .then((reg) => console.log('Service Worker registrado', reg))
-                    .catch((err) => console.log('Service Worker no registrado', err));
-            }});
-        }}
-
-        // Crea un link tag para el manifiesto
-        let link = document.createElement('link');
-        link.rel = 'manifest';
-        link.href = 'data:application/json;charset=utf-8,' + encodeURIComponent({manifest_json});
-        document.head.appendChild(link);
-
-        // También crea meta tags para theme-color (opcional pero recomendado)
-        let metaTheme = document.createElement('meta');
-        metaTheme.name = 'theme-color';
-        metaTheme.content = '#000000';
-        document.head.appendChild(metaTheme);
-    </script>
-    """
-    st.components.v1.html(js_code, height=0)
-
-inject_meta()
-
 # Título de la aplicación
 st.title('Registro de Presión Arterial 🩺')
 
